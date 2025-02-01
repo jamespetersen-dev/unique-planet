@@ -1,0 +1,155 @@
+#pragma kernel SubdivideSector
+
+struct RodData
+{
+    int sector;
+    float3 cornerVertex0; // 3 vertices of the rod
+    float3 cornerVertex1;
+    float3 cornerVertex2;
+    float3 borderVertex0; // 3 vertices
+    float3 borderVertex1;
+    float3 borderVertex2;
+    
+    int triangulation0;
+    int triangulation1;
+    int triangulation2;
+    int triangulation3;
+    int triangulation4;
+    int triangulation5;
+    int triangulation6;
+    int triangulation7;
+    int triangulation8;
+    int triangulation9;
+    int triangulation10;
+    int triangulation11;
+    int triangulation12;
+    int triangulation13;
+    int triangulation14;
+    int triangulation15;
+    int triangulation16;
+    int triangulation17;
+    int triangulation18;
+    int triangulation19;
+    int triangulation20;
+    
+    float surfaceArea;
+    float3 center;
+};
+
+struct SectorData
+{
+    int id;
+    float3 cornerVertex0; // vertices of the larger triangle
+    float3 cornerVertex1;
+    float3 cornerVertex2;
+};
+
+int resolution; // Number of vertices along each edge (>=2)
+int rodCountPerSector; // Expected to equal (resolution-1)^2
+int rodCountTotal; // Total rods = rodCountPerSector * (number of sectors)
+float displacementFactor;
+
+RWStructuredBuffer<SectorData> sectors; // e.g., 20 sectors
+RWStructuredBuffer<RodData> rods; // rodCountTotal entries
+
+uint GetRowIndex(uint index)
+{
+    uint row = 0;
+    uint count = 1; // First row has 1 triangle
+
+    while (index >= count)
+    {
+        row++;
+        count += 2 * row + 1; // Next row has 2 more triangles than the previous
+    }
+
+    return row;
+}
+
+uint GetInRowIndex(uint index, uint row)
+{
+    uint previousTriangles = 0;
+    for (uint r = 0; r < row; r++)
+    {
+        previousTriangles += (2 * r + 1);
+    }
+    return index - previousTriangles;
+}
+
+float3 GridPoint(uint r, uint c, uint resolution, float3 A, float3 B, float3 C)
+{
+    float s = r / float(resolution - 1);
+    float3 leftPoint = lerp(A, B, s);
+    float3 rightPoint = lerp(A, C, s);
+    float t = (r > 0) ? (c / float(r)) : 0.0f;
+    return lerp(leftPoint, rightPoint, t);
+}
+
+void GetTriangleVertices(uint row, uint inRowIndex, uint resolution, float3 A, float3 B, float3 C, out float3 v0, out float3 v1, out float3 v2)
+{
+    if ((inRowIndex & 1) == 0)
+    {
+        // Upright triangle (non-flipped)
+        uint c = inRowIndex / 2;
+        v0 = GridPoint(row, c, resolution, A, B, C);
+        v1 = GridPoint(row + 1, c, resolution, A, B, C);
+        v2 = GridPoint(row + 1, c + 1, resolution, A, B, C);
+    }
+    else
+    {
+        // Flipped (downward) triangle
+        uint c = (inRowIndex - 1) / 2;
+        v0 = GridPoint(row, c + 1, resolution, A, B, C);
+        v1 = GridPoint(row + 1, c, resolution, A, B, C);
+        v2 = GridPoint(row + 1, c + 1, resolution, A, B, C);
+    }
+}
+
+void MapToTriangle(uint index, uint resolution, float3 A, float3 B, float3 C, out float3 v0, out float3 v1, out float3 v2)
+{
+    uint rowIndex = GetRowIndex(index);
+    uint inRowIndex = GetInRowIndex(index, rowIndex);
+    
+    GetTriangleVertices(rowIndex, inRowIndex, resolution, A, B, C, v0, v1, v2);
+}
+
+[numthreads(64, 1, 1)]
+void SubdivideSector(uint3 threadID : SV_DispatchThreadID)
+{
+    // Global index provided from dispatch.
+    uint globalIndex = threadID.x;
+    
+    // Determine the sector and the local rod (cell) index.
+    uint sectorIndex = globalIndex / rodCountPerSector;
+    uint localRodIndex = globalIndex % rodCountPerSector;
+    
+    float3 v0, v1, v2;
+    MapToTriangle(localRodIndex, resolution,
+        sectors[sectorIndex].cornerVertex0, sectors[sectorIndex].cornerVertex1, sectors[sectorIndex].cornerVertex2,
+        v0, v1, v2);
+
+    // Calculate the center (centroid) of the triangle
+    float3 center = (v0 + v1 + v2) / 3.0f;
+
+    // Calculate the surface area of the triangle
+    float3 edge1 = v1 - v0;
+    float3 edge2 = v2 - v0;
+    float surfaceArea = 0.5f * length(cross(edge1, edge2)); // Cross product gives area of parallelogram, divide by 2 for triangle
+
+    // Triangulation info (just store the vertex indices or IDs)
+    // Assuming triangulation refers to indices of the vertices (or sector IDs) forming the triangle
+    uint triangulation0 = sectorIndex; // Or some relevant triangulation index
+    uint triangulation1 = sectorIndex + 1; // Example: adjacent sectors
+    uint triangulation2 = sectorIndex + 2; // Example: adjacent sectors
+    
+    // Store the rod data
+    rods[globalIndex].sector = sectorIndex;
+    rods[globalIndex].cornerVertex0 = v0;
+    rods[globalIndex].cornerVertex1 = v1;
+    rods[globalIndex].cornerVertex2 = v2;
+    rods[globalIndex].center = center;
+    rods[globalIndex].surfaceArea = surfaceArea;
+    rods[globalIndex].triangulation0 = triangulation0;
+    rods[globalIndex].triangulation1 = triangulation1;
+    rods[globalIndex].triangulation2 = triangulation2;
+}

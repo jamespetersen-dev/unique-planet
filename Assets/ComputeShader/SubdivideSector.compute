@@ -1,0 +1,30 @@
+
+#pragma kernel CSMain
+
+struct RodData
+{
+    int sector;
+    float3 cornerVertices[3];    //  3 vertices
+    float3 borderVertices[3];    //  3 vertices
+    int triangulation[21];        //  21 integers
+    float surfaceArea;
+    float3 center;
+};
+
+struct SectorData               //  20 sectors
+{
+    int id;
+    float3 cornerVertices[3];    //  3 vertices
+};
+
+int resolution;
+int rodCount;
+float displacementFactor;
+RWStructuredBuffer<SectorData> sectors;     //  20 sectors
+RWStructuredBuffer<RodData> rods;           //  rodCount * 20 number of RodData
+
+[numthreads(64, 1, 1)]
+void CSMain(uint3 id : SV_DispatchThreadID)
+{
+    
+}
