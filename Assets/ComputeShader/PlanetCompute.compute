@@ -54,55 +54,53 @@ RWStructuredBuffer<RodData> rods; // rodCountTotal entries
 
 uint GetRowIndex(uint index)
 {
-    uint row = 0;
-    uint count = 1; // First row has 1 triangle
-
-    while (index >= count)
-    {
-        row++;
-        count += 2 * row + 1; // Next row has 2 more triangles than the previous
-    }
-
-    return row;
+    return floor(sqrt(index));
+    //return (uint) floor((-1.0 + sqrt(1.0 + 8.0 * index)) / 2.0);
 }
 
 uint GetInRowIndex(uint index, uint row)
 {
-    uint previousTriangles = 0;
-    for (uint r = 0; r < row; r++)
-    {
-        previousTriangles += (2 * r + 1);
-    }
-    return index - previousTriangles;
+    return index - (row * row);
 }
 
-float3 GridPoint(uint r, uint c, uint resolution, float3 A, float3 B, float3 C)
+uint GetRowVertex(uint index)
 {
-    float s = r / float(resolution - 1);
-    float3 leftPoint = lerp(A, B, s);
-    float3 rightPoint = lerp(A, C, s);
-    float t = (r > 0) ? (c / float(r)) : 0.0f;
-    return lerp(leftPoint, rightPoint, t);
+    return (uint) floor((-1.0 + sqrt(1.0 + 8.0 * index)) / 2.0);
 }
 
-void GetTriangleVertices(uint row, uint inRowIndex, uint resolution, float3 A, float3 B, float3 C, out float3 v0, out float3 v1, out float3 v2)
+uint GetInRowVertex(uint index, uint row)
 {
-    if ((inRowIndex & 1) == 0)
-    {
-        // Upright triangle (non-flipped)
-        uint c = inRowIndex / 2;
-        v0 = GridPoint(row, c, resolution, A, B, C);
-        v1 = GridPoint(row + 1, c, resolution, A, B, C);
-        v2 = GridPoint(row + 1, c + 1, resolution, A, B, C);
-    }
-    else
-    {
-        // Flipped (downward) triangle
-        uint c = (inRowIndex - 1) / 2;
-        v0 = GridPoint(row, c + 1, resolution, A, B, C);
-        v1 = GridPoint(row + 1, c, resolution, A, B, C);
-        v2 = GridPoint(row + 1, c + 1, resolution, A, B, C);
-    }
+    return index - (row * (row + 1)) / 2;
+}
+
+float3 GridPoint(uint vertex, uint resolution, float3 A, float3 B, float3 C)
+{
+    uint row = GetRowVertex(vertex);
+    uint col = GetInRowVertex(vertex, row);
+
+    float s = float(row) / float(resolution - 1); // Normalize row index
+    float3 vab = lerp(A, B, s);
+    float3 vac = lerp(A, C, s);
+
+    float3 vpoint = lerp(vab, vac, float(col) / float(row)); // Correct col scaling
+    return vpoint;
+}
+
+int GetVertex0(int triangleRow, int triangleInRow)
+{
+    return int((triangleRow * (triangleRow + 1.0f)) / 2.0f + (triangleInRow / 2.0f));
+}
+
+int GetVertex1(int triangleRow, int triangleInRow)
+{
+    int baseIndex = int(((triangleRow + 1.0f) * (triangleRow + 2.0f)) / 2.0f + (triangleInRow / 2.0f));
+    return (triangleInRow % 2.0f == 0) ? baseIndex : baseIndex + 1.0f;
+}
+
+int GetVertex2(int triangleRow, int triangleInRow)
+{
+    int baseIndex = int(((triangleRow + 1.0f) * (triangleRow + 2.0f)) / 2.0f + (triangleInRow / 2.0f));
+    return (triangleInRow % 2.0f == 0) ? baseIndex + 1.0f : GetVertex0(triangleRow, triangleInRow) + 1.0f;
 }
 
 void MapToTriangle(uint index, uint resolution, float3 A, float3 B, float3 C, out float3 v0, out float3 v1, out float3 v2)
@@ -110,7 +108,9 @@ void MapToTriangle(uint index, uint resolution, float3 A, float3 B, float3 C, ou
     uint rowIndex = GetRowIndex(index);
     uint inRowIndex = GetInRowIndex(index, rowIndex);
     
-    GetTriangleVertices(rowIndex, inRowIndex, resolution, A, B, C, v0, v1, v2);
+    v0 = GridPoint(GetVertex0(rowIndex, inRowIndex), resolution, A, B, C);
+    v1 = GridPoint(GetVertex1(rowIndex, inRowIndex), resolution, A, B, C);
+    v2 = GridPoint(GetVertex2(rowIndex, inRowIndex), resolution, A, B, C);
 }
 
 [numthreads(64, 1, 1)]
@@ -138,9 +138,9 @@ void SubdivideSector(uint3 threadID : SV_DispatchThreadID)
 
     // Triangulation info (just store the vertex indices or IDs)
     // Assuming triangulation refers to indices of the vertices (or sector IDs) forming the triangle
-    uint triangulation0 = sectorIndex; // Or some relevant triangulation index
-    uint triangulation1 = sectorIndex + 1; // Example: adjacent sectors
-    uint triangulation2 = sectorIndex + 2; // Example: adjacent sectors
+    //uint triangulation0 = sectorIndex; // Or some relevant triangulation index
+    //uint triangulation1 = sectorIndex + 1; // Example: adjacent sectors
+    //uint triangulation2 = sectorIndex + 2; // Example: adjacent sectors
     
     // Store the rod data
     rods[globalIndex].sector = sectorIndex;
@@ -149,7 +149,14 @@ void SubdivideSector(uint3 threadID : SV_DispatchThreadID)
     rods[globalIndex].cornerVertex2 = v2;
     rods[globalIndex].center = center;
     rods[globalIndex].surfaceArea = surfaceArea;
-    rods[globalIndex].triangulation0 = triangulation0;
-    rods[globalIndex].triangulation1 = triangulation1;
-    rods[globalIndex].triangulation2 = triangulation2;
+    
+    uint rowIndex = GetRowIndex(localRodIndex); // For resolution 3 goes 0 through 3
+    uint inRowIndex = GetInRowIndex(localRodIndex, rowIndex);
+    
+    rods[globalIndex].triangulation0 = GetVertex0(rowIndex, inRowIndex);
+    rods[globalIndex].triangulation1 = GetVertex1(rowIndex, inRowIndex);
+    rods[globalIndex].triangulation2 = GetVertex2(rowIndex, inRowIndex);
+    rods[globalIndex].triangulation3 = rowIndex;
+    rods[globalIndex].triangulation4 = inRowIndex;
+    rods[globalIndex].triangulation5 = localRodIndex;
 }

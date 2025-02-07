@@ -14,6 +14,7 @@ public class PlanetGenerator : MonoBehaviour
     [SerializeField] Material material;
     [SerializeField, Range(0, 1)] float gizmoSize;
     [SerializeField] bool rodsDisplay;
+    [SerializeField, Range(0, 80)] int rodSelect;
 
     public ComputeShader computeShader;
     public ComputeBuffer sectorBuffer;
@@ -165,11 +166,18 @@ public class PlanetGenerator : MonoBehaviour
             for (int j = 0; j < cornerVertices.Length; j++) {
                 Gizmos.DrawCube(cornerVertices[j], Vector3.one * 1.0f / resolution * 2.0f * gizmoSize);
             }
-            //Handles.Label(middleVertex * 1.1f, $"S{i}");
+            Handles.Label(middleVertex * 1.1f, $"S{i}");
         }
-        for (int i = 0; i < icosahedronVertices.Length; i++) {
-            //Handles.Label(icosahedronVertices[i] * 1.1f, $"V{i}");
-        }
+
+        /*if (resolution <= 16) {
+            for (int i = 0; i < rods.Length; i++) {
+                Vector3[] cornerVert = new Vector3[] { rods[i].cornerVertex0, rods[i].cornerVertex1, rods[i].cornerVertex2 };
+                for (int j = 0; j < cornerVert.Length; j++) {
+                    Gizmos.color = Color.yellow;
+                    Gizmos.DrawCube(cornerVert[j], Vector3.one * 1.0f / resolution * gizmoSize);
+                }
+            }
+        }*/
         if (resolution <= 16) {
             for (int i = 0; i < rods.Length; i++) {
                 Vector3[] cornerVert = new Vector3[] { rods[i].cornerVertex0, rods[i].cornerVertex1, rods[i].cornerVertex2 };
@@ -179,37 +187,60 @@ public class PlanetGenerator : MonoBehaviour
                 }
             }
         }
+        /*if (resolution <= 16 && rodSelect < rods.Length) {
+            Vector3[] cornerVert = new Vector3[] { rods[rodSelect].cornerVertex0, rods[rodSelect].cornerVertex1, rods[rodSelect].cornerVertex2 };
+            for (int j = 0; j < cornerVert.Length; j++) {
+                Gizmos.color = Color.yellow;
+                Gizmos.DrawCube(cornerVert[j], Vector3.one * 1.0f / resolution * gizmoSize);
+                switch (j) {
+                    case 0:
+                        Debug.Log("Rod: " + rodSelect + " + " + rods[rodSelect].triangulation5 + ", Corner " + j + ", Index: " + rods[rodSelect].triangulation0 + " ( " + rods[rodSelect].triangulation3 + " - " + rods[rodSelect].triangulation4 + " ) Position: " + cornerVert[j]);
+                        break;
+                    case 1:
+                        Debug.Log("Rod: " + rodSelect + " + " + rods[rodSelect].triangulation5 + ", Corner " + j + ", Index: " + rods[rodSelect].triangulation1 + " ( " + rods[rodSelect].triangulation3 + " - " + rods[rodSelect].triangulation4 + " ) Position: " + cornerVert[j]);
+                        break;
+                    case 2:
+                        Debug.Log("Rod: " + rodSelect + " + " + rods[rodSelect].triangulation5 + ", Corner " + j + ", Index: " + rods[rodSelect].triangulation2 + " ( " + rods[rodSelect].triangulation3 + " - " + rods[rodSelect].triangulation4 + " ) Position: " + cornerVert[j]);
+                        break;
+                }
+
+            }
+        }*/
+
 
         //rods 360 & 480 experience the bug.
-        Gizmos.color = Color.green;
-        Gizmos.DrawCube(rods[359].cornerVertex0, Vector3.one * 1.0f / resolution * gizmoSize * 1.2f);
-        Gizmos.color = Color.cyan;
-        Gizmos.DrawCube(rods[359].cornerVertex1, Vector3.one * 1.0f / resolution * gizmoSize * 1.2f);
-        Gizmos.color = Color.magenta;
-        Gizmos.DrawCube(rods[359].cornerVertex2, Vector3.one * 1.0f / resolution * gizmoSize * 1.2f);
+        if (rods.Length > 361) {
+            Gizmos.color = Color.green;
+            Gizmos.DrawCube(rods[359].cornerVertex0, Vector3.one * 1.0f / resolution * gizmoSize * 1.2f);
+            Gizmos.color = Color.cyan;
+            Gizmos.DrawCube(rods[359].cornerVertex1, Vector3.one * 1.0f / resolution * gizmoSize * 1.2f);
+            Gizmos.color = Color.magenta;
+            Gizmos.DrawCube(rods[359].cornerVertex2, Vector3.one * 1.0f / resolution * gizmoSize * 1.2f);
 
-        Gizmos.color = Color.green;
-        Gizmos.DrawCube(rods[361].cornerVertex0, Vector3.one * 1.0f / resolution * gizmoSize * 1.2f);
-        Gizmos.color = Color.cyan;
-        Gizmos.DrawCube(rods[361].cornerVertex1, Vector3.one * 1.0f / resolution * gizmoSize * 1.2f);
-        Gizmos.color = Color.magenta;
-        Gizmos.DrawCube(rods[361].cornerVertex2, Vector3.one * 1.0f / resolution * gizmoSize * 1.2f);
+            Gizmos.color = Color.green;
+            Gizmos.DrawCube(rods[361].cornerVertex0, Vector3.one * 1.0f / resolution * gizmoSize * 1.2f);
+            Gizmos.color = Color.cyan;
+            Gizmos.DrawCube(rods[361].cornerVertex1, Vector3.one * 1.0f / resolution * gizmoSize * 1.2f);
+            Gizmos.color = Color.magenta;
+            Gizmos.DrawCube(rods[361].cornerVertex2, Vector3.one * 1.0f / resolution * gizmoSize * 1.2f);
 
-        Gizmos.color = Color.white;
-        Gizmos.DrawCube(rods[360].cornerVertex0, Vector3.one * 1.0f / resolution * gizmoSize * 1.2f);
-        Gizmos.color = Color.gray;
-        Gizmos.DrawCube(rods[360].cornerVertex1, Vector3.one * 1.0f / resolution * gizmoSize * 1.2f);
-        Gizmos.color = Color.black;
-        Gizmos.DrawCube(rods[360].cornerVertex2, Vector3.one * 1.0f / resolution * gizmoSize * 1.2f);
+            Gizmos.color = Color.white;
+            Gizmos.DrawCube(rods[360].cornerVertex0, Vector3.one * 1.0f / resolution * gizmoSize * 1.2f);
+            Gizmos.color = Color.gray;
+            Gizmos.DrawCube(rods[360].cornerVertex1, Vector3.one * 1.0f / resolution * gizmoSize * 1.2f);
+            Gizmos.color = Color.black;
+            Gizmos.DrawCube(rods[360].cornerVertex2, Vector3.one * 1.0f / resolution * gizmoSize * 1.2f);
+        }
 
-        /*for (int i = 0; i < rods.Length; i += 30) {
-            Vector3[] cv = new Vector3[] { rods[i].cornerVertex0, rods[i].cornerVertex1, rods[i].cornerVertex2 };
-            for (int j = 0; j < cv.Length; j++) {
+        if (rodsDisplay) {
+            for (int i = 0; i < rods.Length; i++) {
                 Gizmos.color = Color.cyan;
-                Gizmos.DrawCube(cv[j], Vector3.one * 1.0f / resolution * gizmoSize * 1.1f);
+                Vector3[] cv = new Vector3[] { rods[i].cornerVertex0, rods[i].cornerVertex1, rods[i].cornerVertex2 };
+                Vector3 center = (cv[0] + cv[1] + cv[2]) / 3.0f;
+                Gizmos.DrawCube(center, Vector3.one * 1.0f / resolution * gizmoSize * 1.1f);
+                //Handles.Label((cv[0] + cv[1] + cv[2]) / 3.0f * 1.1f, $"R{i}");
             }
-            Handles.Label((cv[0] + cv[1] + cv[2]) / 3.0f * 1.1f, $"R{i}");
-        }*/
+        }
     }
 
 

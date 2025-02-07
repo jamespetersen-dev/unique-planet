@@ -353,10 +353,12 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: b7406ce08a3d5374aa35f2fac21e68e2, type: 3}
   m_Name: 
   m_EditorClassIdentifier: 
-  resolution: 6
+  resolution: 3
   displacementFactor: 0.115
   material: {fileID: 10303, guid: 0000000000000000f000000000000000, type: 0}
   gizmoSize: 0.4
+  rodsDisplay: 0
+  rodSelect: 0
   computeShader: {fileID: 7200000, guid: 602f752ec02589a41bafb6b24b49aa89, type: 3}
 --- !u!1660057539 &9223372036854775807
 SceneRoots:
