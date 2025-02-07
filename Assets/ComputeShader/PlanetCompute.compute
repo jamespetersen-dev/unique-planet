@@ -81,26 +81,29 @@ float3 GridPoint(uint vertex, uint resolution, float3 A, float3 B, float3 C)
     float s = float(row) / float(resolution - 1); // Normalize row index
     float3 vab = lerp(A, B, s);
     float3 vac = lerp(A, C, s);
-
+    if (row == 0) // if row = 0, then it will just be at the A position, so prevent dividing by 0
+    {
+        return A;
+    }
     float3 vpoint = lerp(vab, vac, float(col) / float(row)); // Correct col scaling
     return vpoint;
 }
 
-int GetVertex0(int triangleRow, int triangleInRow)
+int GetVertex0(int triangleRow, int triangleInRow) //0, 0 returns 0
 {
     return int((triangleRow * (triangleRow + 1.0f)) / 2.0f + (triangleInRow / 2.0f));
 }
 
-int GetVertex1(int triangleRow, int triangleInRow)
+int GetVertex1(int triangleRow, int triangleInRow) //0, 0 returns 1
 {
     int baseIndex = int(((triangleRow + 1.0f) * (triangleRow + 2.0f)) / 2.0f + (triangleInRow / 2.0f));
-    return (triangleInRow % 2.0f == 0) ? baseIndex : baseIndex + 1.0f;
+    return (triangleInRow % 2 == 0) ? baseIndex : baseIndex + 1;
 }
 
-int GetVertex2(int triangleRow, int triangleInRow)
+int GetVertex2(int triangleRow, int triangleInRow) //0, 0 returns 2
 {
     int baseIndex = int(((triangleRow + 1.0f) * (triangleRow + 2.0f)) / 2.0f + (triangleInRow / 2.0f));
-    return (triangleInRow % 2.0f == 0) ? baseIndex + 1.0f : GetVertex0(triangleRow, triangleInRow) + 1.0f;
+    return (triangleInRow % 2 == 0) ? baseIndex + 1 : GetVertex0(triangleRow, triangleInRow) + 1;
 }
 
 void MapToTriangle(uint index, uint resolution, float3 A, float3 B, float3 C, out float3 v0, out float3 v1, out float3 v2)
@@ -153,10 +156,7 @@ void SubdivideSector(uint3 threadID : SV_DispatchThreadID)
     uint rowIndex = GetRowIndex(localRodIndex); // For resolution 3 goes 0 through 3
     uint inRowIndex = GetInRowIndex(localRodIndex, rowIndex);
     
-    rods[globalIndex].triangulation0 = GetVertex0(rowIndex, inRowIndex);
-    rods[globalIndex].triangulation1 = GetVertex1(rowIndex, inRowIndex);
-    rods[globalIndex].triangulation2 = GetVertex2(rowIndex, inRowIndex);
-    rods[globalIndex].triangulation3 = rowIndex;
-    rods[globalIndex].triangulation4 = inRowIndex;
-    rods[globalIndex].triangulation5 = localRodIndex;
+    rods[globalIndex].triangulation0 = 0;
+    rods[globalIndex].triangulation1 = 1;
+    rods[globalIndex].triangulation2 = 2;
 }

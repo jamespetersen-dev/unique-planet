@@ -169,15 +169,6 @@ public class PlanetGenerator : MonoBehaviour
             Handles.Label(middleVertex * 1.1f, $"S{i}");
         }
 
-        /*if (resolution <= 16) {
-            for (int i = 0; i < rods.Length; i++) {
-                Vector3[] cornerVert = new Vector3[] { rods[i].cornerVertex0, rods[i].cornerVertex1, rods[i].cornerVertex2 };
-                for (int j = 0; j < cornerVert.Length; j++) {
-                    Gizmos.color = Color.yellow;
-                    Gizmos.DrawCube(cornerVert[j], Vector3.one * 1.0f / resolution * gizmoSize);
-                }
-            }
-        }*/
         if (resolution <= 16) {
             for (int i = 0; i < rods.Length; i++) {
                 Vector3[] cornerVert = new Vector3[] { rods[i].cornerVertex0, rods[i].cornerVertex1, rods[i].cornerVertex2 };
@@ -187,6 +178,15 @@ public class PlanetGenerator : MonoBehaviour
                 }
             }
         }
+        /*if (resolution <= 16) {
+            for (int i = 0; i < rods.Length; i++) {
+                Vector3[] cornerVert = new Vector3[] { rods[i].cornerVertex0, rods[i].cornerVertex1, rods[i].cornerVertex2 };
+                for (int j = 0; j < cornerVert.Length; j++) {
+                    Gizmos.color = Color.yellow;
+                    Gizmos.DrawCube(cornerVert[j], Vector3.one * 1.0f / resolution * gizmoSize);
+                }
+            }
+        }*/
         /*if (resolution <= 16 && rodSelect < rods.Length) {
             Vector3[] cornerVert = new Vector3[] { rods[rodSelect].cornerVertex0, rods[rodSelect].cornerVertex1, rods[rodSelect].cornerVertex2 };
             for (int j = 0; j < cornerVert.Length; j++) {
@@ -209,7 +209,7 @@ public class PlanetGenerator : MonoBehaviour
 
 
         //rods 360 & 480 experience the bug.
-        if (rods.Length > 361) {
+        /*if (rods.Length > 361) {
             Gizmos.color = Color.green;
             Gizmos.DrawCube(rods[359].cornerVertex0, Vector3.one * 1.0f / resolution * gizmoSize * 1.2f);
             Gizmos.color = Color.cyan;
@@ -230,7 +230,7 @@ public class PlanetGenerator : MonoBehaviour
             Gizmos.DrawCube(rods[360].cornerVertex1, Vector3.one * 1.0f / resolution * gizmoSize * 1.2f);
             Gizmos.color = Color.black;
             Gizmos.DrawCube(rods[360].cornerVertex2, Vector3.one * 1.0f / resolution * gizmoSize * 1.2f);
-        }
+        }*/
 
         if (rodsDisplay) {
             for (int i = 0; i < rods.Length; i++) {

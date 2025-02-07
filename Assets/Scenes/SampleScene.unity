@@ -353,7 +353,7 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: b7406ce08a3d5374aa35f2fac21e68e2, type: 3}
   m_Name: 
   m_EditorClassIdentifier: 
-  resolution: 3
+  resolution: 15
   displacementFactor: 0.115
   material: {fileID: 10303, guid: 0000000000000000f000000000000000, type: 0}
   gizmoSize: 0.4
