@@ -13,6 +13,7 @@ struct RodData
     
     float surfaceArea;
     float3 center;
+    float3 perpendicularity;
 };
 
 struct SectorData
@@ -27,6 +28,7 @@ int resolution; // Number of vertices along each edge (>=2)
 int rodCountPerSector; // Expected to equal (resolution-1)^2
 int rodCountTotal; // Total rods = rodCountPerSector * (number of sectors)
 float displacementFactor;
+float rodLength;
 
 RWStructuredBuffer<SectorData> sectors; // e.g., 20 sectors
 RWStructuredBuffer<RodData> rods; // rodCountTotal entries
@@ -120,10 +122,37 @@ void SubdivideSector(uint3 threadID : SV_DispatchThreadID)
     
     if (sectorIndex == 0)
     {
-        uint triangulationIndex = localRodIndex * 3;
-        triangulation[triangulationIndex] = triangulationIndex;
-        triangulation[triangulationIndex + 1] = triangulationIndex + 1;
-        triangulation[triangulationIndex + 2] = triangulationIndex + 2;
+        uint triangulationIndex = localRodIndex * 21;
+        uint vertexIndex = localRodIndex * 6;
+        
+        //Top Triangle
+        triangulation[triangulationIndex] = vertexIndex;
+        triangulation[triangulationIndex + 1] = vertexIndex + 1;
+        triangulation[triangulationIndex + 2] = vertexIndex + 2;
+        
+        //Quad 0
+        triangulation[triangulationIndex + 3] = vertexIndex + 0;
+        triangulation[triangulationIndex + 4] = vertexIndex + 3;
+        triangulation[triangulationIndex + 5] = vertexIndex + 1;
+        triangulation[triangulationIndex + 6] = vertexIndex + 3;
+        triangulation[triangulationIndex + 7] = vertexIndex + 4;
+        triangulation[triangulationIndex + 8] = vertexIndex + 1;
+        
+        //Quad 1
+        triangulation[triangulationIndex + 9] = vertexIndex + 1;
+        triangulation[triangulationIndex + 10] = vertexIndex + 4;
+        triangulation[triangulationIndex + 11] = vertexIndex + 2;
+        triangulation[triangulationIndex + 12] = vertexIndex + 4;
+        triangulation[triangulationIndex + 13] = vertexIndex + 5;
+        triangulation[triangulationIndex + 14] = vertexIndex + 2;
+        
+        //Quad 2
+        triangulation[triangulationIndex + 15] = vertexIndex + 2;
+        triangulation[triangulationIndex + 16] = vertexIndex + 5;
+        triangulation[triangulationIndex + 17] = vertexIndex + 0;
+        triangulation[triangulationIndex + 18] = vertexIndex + 5;
+        triangulation[triangulationIndex + 19] = vertexIndex + 3;
+        triangulation[triangulationIndex + 20] = vertexIndex + 0;
     }
 }
 
@@ -138,9 +167,9 @@ float hash(uint n)
 float3 ScatterVector(float3 A, float displacement)
 {
     float3 vector0 = float3(
-            hash(uint((A.x + 100.0f) * 10000)),
-            hash(uint((A.y + 100.0f) * 10000)),
-            hash(uint((A.z + 100.0f) * 10000))
+            hash(uint((A.x + 123.4f) * 10000)),
+            hash(uint((A.y + 56.7f) * 10000)),
+            hash(uint((A.z + 89.0f) * 10000))
         );
     vector0 = normalize(vector0) * displacement;
     return normalize(A + vector0);
@@ -175,8 +204,19 @@ void PopScatterSector(uint3 threadID : SV_DispatchThreadID)
     float3 edge2 = rods[globalIndex].cornerVertex2 - rods[globalIndex].cornerVertex0;
     float surfaceArea = 0.5f * length(cross(edge1, edge2)); // Cross product gives area of parallelogram, divide by 2 for triangle
     
-    uint vertexIndex = globalIndex * 3;
+    
+    float3 perpendicular = normalize(cross(edge1, edge2));
+    rods[globalIndex].borderVertex0 = rods[globalIndex].cornerVertex0 - perpendicular * rodLength;
+    rods[globalIndex].borderVertex1 = rods[globalIndex].cornerVertex1 - perpendicular * rodLength;
+    rods[globalIndex].borderVertex2 = rods[globalIndex].cornerVertex2 - perpendicular * rodLength;
+    
+    rods[globalIndex].perpendicularity = perpendicular;
+    
+    uint vertexIndex = globalIndex * 6;
     vertices[vertexIndex] = rods[globalIndex].cornerVertex0;
     vertices[vertexIndex + 1] = rods[globalIndex].cornerVertex1;
     vertices[vertexIndex + 2] = rods[globalIndex].cornerVertex2;
+    vertices[vertexIndex + 3] = rods[globalIndex].borderVertex0;
+    vertices[vertexIndex + 4] = rods[globalIndex].borderVertex1;
+    vertices[vertexIndex + 5] = rods[globalIndex].borderVertex2;
 }

@@ -12,10 +12,8 @@ public class PlanetGenerator : MonoBehaviour
     [SerializeField, Range(2, 103)] int resolution; //  Number of vertices along an edge
                                                     //  Resolution max is 128 because ((128 - 1)^2) * 4 = 64516, highest possible resolution without going over max number of vertices
     [SerializeField, Range(0, 1)] float displacementFactor; //Displaces each vertex by 1 / resolution * displacementFactor / 2 in a random vector3 direction
+    [SerializeField, Range(0, 1)] float rodLength;
     [SerializeField] Material material;
-    [SerializeField, Range(0, 1)] float gizmoSize;
-    [SerializeField] bool rodsDisplay;
-    [SerializeField, Range(0, 80)] int rodSelect;
 
     public ComputeShader computeShader;
     public ComputeBuffer sectorBuffer;
@@ -46,6 +44,7 @@ public class PlanetGenerator : MonoBehaviour
         public Vector3 borderVertex2;
         public float surfaceArea;
         public Vector3 center;
+        public Vector3 perpendicularity;
     }
 
     float phi;
@@ -100,13 +99,6 @@ public class PlanetGenerator : MonoBehaviour
         return sector;
     }
 
-    //To Do:
-    //  Separate Triangulation from Rods
-    //  Triangulation Data is the same for all meshes
-    //  Generate Triangulation Data when first Subdividing
-    //  Only need to save the data for one of the meshes for triangulation
-    //  Generate Vertex Data
-
     private void Compute() {
         int kernelHandle0 = computeShader.FindKernel("SubdivideSector");
         int kernelHandle1 = computeShader.FindKernel("PopScatterSector");
@@ -114,9 +106,9 @@ public class PlanetGenerator : MonoBehaviour
         int rodCountPerSector = (int)Mathf.Pow(resolution - 1, 2);
         int rodCountTotal = rodCountPerSector * 20;
         sectorBuffer = new ComputeBuffer(20, sizeof(int) + sizeof(float) * 3 * 3);
-        rodBuffer = new ComputeBuffer(rodCountTotal, sizeof(int) + sizeof(float) * 9 + sizeof(float) * 9 + sizeof(float) + sizeof(float) * 3);
-        triangleMeshBuffer = new ComputeBuffer(rodCountPerSector * 3, sizeof(int));
-        vertexMeshBuffer = new ComputeBuffer(rodCountTotal * 3, sizeof(float) * 3);
+        rodBuffer = new ComputeBuffer(rodCountTotal, sizeof(int) + sizeof(float) * 9 + sizeof(float) * 9 + sizeof(float) + sizeof(float) * 3 + sizeof(float) * 3);
+        triangleMeshBuffer = new ComputeBuffer(rodCountPerSector * 21, sizeof(int));
+        vertexMeshBuffer = new ComputeBuffer(rodCountTotal * 6, sizeof(float) * 3);
 
         computeShader.SetBuffer(kernelHandle0, "sectors", sectorBuffer);
         sectorBuffer.SetData(sectors);
@@ -127,6 +119,7 @@ public class PlanetGenerator : MonoBehaviour
         computeShader.SetInt("rodCountTotal", rodCountTotal);
         computeShader.SetInt("resolution", resolution);
         computeShader.SetFloat("displacementFactor", displacementFactor);
+        computeShader.SetFloat("rodLength", rodLength);
 
         int threadGroupSize = Mathf.CeilToInt(rodCountTotal * 20 / 64.0f);
         computeShader.Dispatch(kernelHandle0, threadGroupSize, 1, 1);
@@ -144,11 +137,11 @@ public class PlanetGenerator : MonoBehaviour
         rodBuffer.GetData(updatedRods);
         rods = updatedRods;
 
-        int[] updatedTriangles = new int[rodCountPerSector * 3];
+        int[] updatedTriangles = new int[rodCountPerSector * 21];
         triangleMeshBuffer.GetData(updatedTriangles);
         triangles = updatedTriangles;
 
-        Vector3[] updatedVertices = new Vector3[rodCountTotal * 3];
+        Vector3[] updatedVertices = new Vector3[rodCountTotal * 6];
         vertexMeshBuffer.GetData(updatedVertices);
         vertices = updatedVertices;
     }
