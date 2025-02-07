@@ -1,5 +1,6 @@
 #pragma kernel SubdivideSector
 #pragma kernel PopScatterSector
+#pragma kernel MoonAffect
 
 struct RodData
 {
@@ -14,6 +15,7 @@ struct RodData
     float surfaceArea;
     float3 center;
     float3 perpendicularity;
+    float displacement;
 };
 
 struct SectorData
@@ -23,17 +25,26 @@ struct SectorData
     float3 cornerVertex1;
     float3 cornerVertex2;
 };
+struct MoonData
+{
+    float3 position;
+    float size;
+};
 
 int resolution; // Number of vertices along each edge (>=2)
 int rodCountPerSector; // Expected to equal (resolution-1)^2
 int rodCountTotal; // Total rods = rodCountPerSector * (number of sectors)
+int moonCount;
 float displacementFactor;
 float rodLength;
+float gravitationalRange;
 
 RWStructuredBuffer<SectorData> sectors; // e.g., 20 sectors
 RWStructuredBuffer<RodData> rods; // rodCountTotal entries
 RWStructuredBuffer<int> triangulation; // Triangulation for 1 sector
 RWStructuredBuffer<float3> vertices; // All vertices for all sectors
+RWStructuredBuffer<float3> normals; 
+RWStructuredBuffer<MoonData> moons; 
 
 uint GetRowIndex(uint index)
 {
@@ -175,6 +186,18 @@ float3 ScatterVector(float3 A, float displacement)
     return normalize(A + vector0);
 }
 
+void PullRod(uint globalIndex, float distance)
+{
+    rods[globalIndex].displacement = distance;
+    uint vertexIndex = globalIndex * 6;
+    vertices[vertexIndex] = rods[globalIndex].cornerVertex0 + rods[globalIndex].perpendicularity * distance;
+    vertices[vertexIndex + 1] = rods[globalIndex].cornerVertex1 + rods[globalIndex].perpendicularity * distance;
+    vertices[vertexIndex + 2] = rods[globalIndex].cornerVertex2 + rods[globalIndex].perpendicularity * distance;
+    vertices[vertexIndex + 3] = rods[globalIndex].borderVertex0 + rods[globalIndex].perpendicularity * distance;
+    vertices[vertexIndex + 4] = rods[globalIndex].borderVertex1 + rods[globalIndex].perpendicularity * distance;
+    vertices[vertexIndex + 5] = rods[globalIndex].borderVertex2 + rods[globalIndex].perpendicularity * distance;
+}
+
 [numthreads(64, 1, 1)]
 void PopScatterSector(uint3 threadID : SV_DispatchThreadID)
 {
@@ -197,26 +220,63 @@ void PopScatterSector(uint3 threadID : SV_DispatchThreadID)
         rods[globalIndex].cornerVertex2 = ScatterVector(rods[globalIndex].cornerVertex2, maxDisplacement);
     }
     
-    float3 center = (rods[globalIndex].cornerVertex0 + rods[globalIndex].cornerVertex1 + rods[globalIndex].cornerVertex2) / 3.0f;
+    rods[globalIndex].center = ((rods[globalIndex].cornerVertex0 + rods[globalIndex].cornerVertex1 + rods[globalIndex].cornerVertex2) / 3.0f);
 
     // Calculate the surface area of the triangle
     float3 edge1 = rods[globalIndex].cornerVertex1 - rods[globalIndex].cornerVertex0;
     float3 edge2 = rods[globalIndex].cornerVertex2 - rods[globalIndex].cornerVertex0;
-    float surfaceArea = 0.5f * length(cross(edge1, edge2)); // Cross product gives area of parallelogram, divide by 2 for triangle
-    
+    float surfaceArea = 0.5f * length(cross(edge1, edge2));
     
     float3 perpendicular = normalize(cross(edge1, edge2));
+    normals[globalIndex * 6] = perpendicular;
+    normals[globalIndex * 6 + 1] = perpendicular;
+    normals[globalIndex * 6 + 2] = perpendicular;
+    normals[globalIndex * 6 + 3] = perpendicular;
+    normals[globalIndex * 6 + 4] = perpendicular;
+    normals[globalIndex * 6 + 5] = perpendicular;
+    
     rods[globalIndex].borderVertex0 = rods[globalIndex].cornerVertex0 - perpendicular * rodLength;
     rods[globalIndex].borderVertex1 = rods[globalIndex].cornerVertex1 - perpendicular * rodLength;
     rods[globalIndex].borderVertex2 = rods[globalIndex].cornerVertex2 - perpendicular * rodLength;
     
     rods[globalIndex].perpendicularity = perpendicular;
     
-    uint vertexIndex = globalIndex * 6;
+    
+    PullRod(globalIndex, rodLength);
+    /*uint vertexIndex = globalIndex * 6;
     vertices[vertexIndex] = rods[globalIndex].cornerVertex0;
     vertices[vertexIndex + 1] = rods[globalIndex].cornerVertex1;
     vertices[vertexIndex + 2] = rods[globalIndex].cornerVertex2;
     vertices[vertexIndex + 3] = rods[globalIndex].borderVertex0;
     vertices[vertexIndex + 4] = rods[globalIndex].borderVertex1;
-    vertices[vertexIndex + 5] = rods[globalIndex].borderVertex2;
+    vertices[vertexIndex + 5] = rods[globalIndex].borderVertex2;*/
+}
+
+[numthreads(64, 1, 1)]
+void MoonAffect(uint3 threadID : SV_DispatchThreadID) {
+    uint globalIndex = threadID.x;
+    
+    uint sectorIndex = globalIndex / rodCountPerSector;
+    uint localRodIndex = globalIndex % rodCountPerSector;
+    for (int i = 0; i < moonCount; i++)
+    {
+        float dist = distance(rods[globalIndex].center + rods[globalIndex].perpendicularity * rodLength, moons[i].position);
+        if (dist <= moons[i].size * gravitationalRange)
+        {
+            float factor = dist / (moons[i].size * gravitationalRange);
+            factor = 1 - factor;
+            if (factor > 1)
+            {
+                PullRod(globalIndex, 0);
+            }
+            else
+            {
+                PullRod(globalIndex, rodLength + factor);
+            }
+        }
+        else
+        {
+            //PullRod(globalIndex, rodLength);
+        }
+    }
 }
