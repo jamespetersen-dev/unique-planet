@@ -1,3 +1,4 @@
+using System;
 using System.Collections;
 using System.Collections.Generic;
 using System.ComponentModel.Design;
@@ -8,7 +9,7 @@ using UnityEngine;
 
 public class PlanetGenerator : MonoBehaviour
 {
-    [SerializeField, Range(2, 128)] int resolution; //  Number of vertices along an edge
+    [SerializeField, Range(2, 103)] int resolution; //  Number of vertices along an edge
                                                     //  Resolution max is 128 because ((128 - 1)^2) * 4 = 64516, highest possible resolution without going over max number of vertices
     [SerializeField, Range(0, 1)] float displacementFactor; //Displaces each vertex by 1 / resolution * displacementFactor / 2 in a random vector3 direction
     [SerializeField] Material material;
@@ -19,7 +20,13 @@ public class PlanetGenerator : MonoBehaviour
     public ComputeShader computeShader;
     public ComputeBuffer sectorBuffer;
     public ComputeBuffer rodBuffer;
+    public ComputeBuffer triangleMeshBuffer;
+    public ComputeBuffer vertexMeshBuffer;
 
+    GameObject[] sectorObjs;
+
+    int[] triangles;
+    Vector3[] vertices;
     SectorData[] sectors;
     RodData[] rods;
 
@@ -37,27 +44,6 @@ public class PlanetGenerator : MonoBehaviour
         public Vector3 borderVertex0;   //  3 Border Vertices
         public Vector3 borderVertex1;
         public Vector3 borderVertex2;
-        public int triangulation0;
-        public int triangulation1;
-        public int triangulation2;
-        public int triangulation3;
-        public int triangulation4;
-        public int triangulation5;
-        public int triangulation6;
-        public int triangulation7;
-        public int triangulation8;
-        public int triangulation9;
-        public int triangulation10;
-        public int triangulation11;
-        public int triangulation12;
-        public int triangulation13;
-        public int triangulation14;
-        public int triangulation15;
-        public int triangulation16;
-        public int triangulation17;
-        public int triangulation18;
-        public int triangulation19;
-        public int triangulation20;
         public float surfaceArea;
         public Vector3 center;
     }
@@ -67,6 +53,7 @@ public class PlanetGenerator : MonoBehaviour
     private void Awake() {
         this.sectors = InitializeSectors();
         Compute();
+        Render();
     }
     private SectorData[] InitializeSectors() {
         phi = (1 + Mathf.Sqrt(5)) / 2;
@@ -113,17 +100,28 @@ public class PlanetGenerator : MonoBehaviour
         return sector;
     }
 
+    //To Do:
+    //  Separate Triangulation from Rods
+    //  Triangulation Data is the same for all meshes
+    //  Generate Triangulation Data when first Subdividing
+    //  Only need to save the data for one of the meshes for triangulation
+    //  Generate Vertex Data
+
     private void Compute() {
-        int kernelHandle = computeShader.FindKernel("SubdivideSector");
+        int kernelHandle0 = computeShader.FindKernel("SubdivideSector");
+        int kernelHandle1 = computeShader.FindKernel("PopScatterSector");
 
         int rodCountPerSector = (int)Mathf.Pow(resolution - 1, 2);
         int rodCountTotal = rodCountPerSector * 20;
         sectorBuffer = new ComputeBuffer(20, sizeof(int) + sizeof(float) * 3 * 3);
-        rodBuffer = new ComputeBuffer(rodCountTotal, sizeof(int) + sizeof(float) * 9 + sizeof(float) * 9 + sizeof(float) + sizeof(float) * 3 + sizeof(int) * 21);
+        rodBuffer = new ComputeBuffer(rodCountTotal, sizeof(int) + sizeof(float) * 9 + sizeof(float) * 9 + sizeof(float) + sizeof(float) * 3);
+        triangleMeshBuffer = new ComputeBuffer(rodCountPerSector * 3, sizeof(int));
+        vertexMeshBuffer = new ComputeBuffer(rodCountTotal * 3, sizeof(float) * 3);
 
-        computeShader.SetBuffer(kernelHandle, "sectors", sectorBuffer);
+        computeShader.SetBuffer(kernelHandle0, "sectors", sectorBuffer);
         sectorBuffer.SetData(sectors);
-        computeShader.SetBuffer(kernelHandle, "rods", rodBuffer);
+        computeShader.SetBuffer(kernelHandle0, "rods", rodBuffer);
+        computeShader.SetBuffer(kernelHandle0, "triangulation", triangleMeshBuffer);
 
         computeShader.SetInt("rodCountPerSector", rodCountPerSector);
         computeShader.SetInt("rodCountTotal", rodCountTotal);
@@ -131,9 +129,12 @@ public class PlanetGenerator : MonoBehaviour
         computeShader.SetFloat("displacementFactor", displacementFactor);
 
         int threadGroupSize = Mathf.CeilToInt(rodCountTotal * 20 / 64.0f);
-        Debug.Log("Dispatch");
-        computeShader.Dispatch(kernelHandle, threadGroupSize, 1, 1);
-        Debug.Log("Dispatch Complete");
+        computeShader.Dispatch(kernelHandle0, threadGroupSize, 1, 1);
+
+        computeShader.SetBuffer(kernelHandle1, "sectors", sectorBuffer);
+        computeShader.SetBuffer(kernelHandle1, "rods", rodBuffer);
+        computeShader.SetBuffer(kernelHandle1, "vertices", vertexMeshBuffer);
+        computeShader.Dispatch(kernelHandle1, threadGroupSize, 1, 1);
 
         SectorData[] updatedSectors = new SectorData[20];
         sectorBuffer.GetData(updatedSectors);
@@ -143,104 +144,61 @@ public class PlanetGenerator : MonoBehaviour
         rodBuffer.GetData(updatedRods);
         rods = updatedRods;
 
-        Debug.Log("Number of Rods: " + rods.Length);
+        int[] updatedTriangles = new int[rodCountPerSector * 3];
+        triangleMeshBuffer.GetData(updatedTriangles);
+        triangles = updatedTriangles;
+
+        Vector3[] updatedVertices = new Vector3[rodCountTotal * 3];
+        vertexMeshBuffer.GetData(updatedVertices);
+        vertices = updatedVertices;
+    }
+
+    private void Render() {
+
+        // Returned Buffers from the compute will have a single buffer with the vertices and a single buffer with the triangles
+        // Need to separate those out into 20 different arrays
+        //Alternatively...
+        //  Triangulation and Vertex Data will be the exact same for all of the different meshes.
+        //  Reuse
+
+        sectorObjs = new GameObject[sectors.Length];
+        int sectorLength = vertices.Length / sectors.Length; // Divide vertices equally among sectors
+
+        for (int i = 0; i < sectors.Length; i++) {
+            sectorObjs[i] = new GameObject("Sector: " + i);
+            sectorObjs[i].transform.parent = transform;
+            sectorObjs[i].transform.position = transform.position;
+
+            Mesh mesh = new Mesh();
+
+            // Assuming triangles is correctly defined elsewhere for the sector
+            Vector3[] sectorVertices = new Vector3[sectorLength]; // This should match the expected number of vertices per sector
+            Array.Copy(vertices, i * sectorLength, sectorVertices, 0, sectorLength); // Copy the correct chunk of vertices for this sector
+
+            mesh.vertices = sectorVertices;
+
+            // Ensure triangles and vertex count match
+            mesh.triangles = triangles; // Make sure this is correctly set for each sector
+            mesh.RecalculateNormals();
+            mesh.RecalculateTangents();
+
+            // Add components to the sector object
+            sectorObjs[i].AddComponent<MeshRenderer>().material = material;
+            sectorObjs[i].AddComponent<MeshFilter>().mesh = mesh;
+        }
     }
 
     private void OnDestroy() {
         if (sectorBuffer != null) sectorBuffer.Release();
         if (rodBuffer != null) rodBuffer.Release();
+        if (triangleMeshBuffer != null) triangleMeshBuffer.Release();
+        if (vertexMeshBuffer != null) vertexMeshBuffer.Release();
     }
     private void OnDisable() {
         if (sectorBuffer != null) sectorBuffer.Release();
         if (rodBuffer != null) rodBuffer.Release();
-    }
-
-    private void OnDrawGizmos() {
-        if (sectors == null) return;
-
-        Gizmos.color = Color.red;
-
-        for (int i = 0; i < sectors.Length; i++) {
-            Vector3[] cornerVertices = new Vector3[] { sectors[i].cornerVertex0, sectors[i].cornerVertex1, sectors[i].cornerVertex2 };
-            Vector3 middleVertex = (cornerVertices[0] + cornerVertices[1] + cornerVertices[2]) / 3.0f;
-            for (int j = 0; j < cornerVertices.Length; j++) {
-                Gizmos.DrawCube(cornerVertices[j], Vector3.one * 1.0f / resolution * 2.0f * gizmoSize);
-            }
-            Handles.Label(middleVertex * 1.1f, $"S{i}");
-        }
-
-        if (resolution <= 16) {
-            for (int i = 0; i < rods.Length; i++) {
-                Vector3[] cornerVert = new Vector3[] { rods[i].cornerVertex0, rods[i].cornerVertex1, rods[i].cornerVertex2 };
-                for (int j = 0; j < cornerVert.Length; j++) {
-                    Gizmos.color = Color.yellow;
-                    Gizmos.DrawCube(cornerVert[j], Vector3.one * 1.0f / resolution * gizmoSize);
-                }
-            }
-        }
-        /*if (resolution <= 16) {
-            for (int i = 0; i < rods.Length; i++) {
-                Vector3[] cornerVert = new Vector3[] { rods[i].cornerVertex0, rods[i].cornerVertex1, rods[i].cornerVertex2 };
-                for (int j = 0; j < cornerVert.Length; j++) {
-                    Gizmos.color = Color.yellow;
-                    Gizmos.DrawCube(cornerVert[j], Vector3.one * 1.0f / resolution * gizmoSize);
-                }
-            }
-        }*/
-        /*if (resolution <= 16 && rodSelect < rods.Length) {
-            Vector3[] cornerVert = new Vector3[] { rods[rodSelect].cornerVertex0, rods[rodSelect].cornerVertex1, rods[rodSelect].cornerVertex2 };
-            for (int j = 0; j < cornerVert.Length; j++) {
-                Gizmos.color = Color.yellow;
-                Gizmos.DrawCube(cornerVert[j], Vector3.one * 1.0f / resolution * gizmoSize);
-                switch (j) {
-                    case 0:
-                        Debug.Log("Rod: " + rodSelect + " + " + rods[rodSelect].triangulation5 + ", Corner " + j + ", Index: " + rods[rodSelect].triangulation0 + " ( " + rods[rodSelect].triangulation3 + " - " + rods[rodSelect].triangulation4 + " ) Position: " + cornerVert[j]);
-                        break;
-                    case 1:
-                        Debug.Log("Rod: " + rodSelect + " + " + rods[rodSelect].triangulation5 + ", Corner " + j + ", Index: " + rods[rodSelect].triangulation1 + " ( " + rods[rodSelect].triangulation3 + " - " + rods[rodSelect].triangulation4 + " ) Position: " + cornerVert[j]);
-                        break;
-                    case 2:
-                        Debug.Log("Rod: " + rodSelect + " + " + rods[rodSelect].triangulation5 + ", Corner " + j + ", Index: " + rods[rodSelect].triangulation2 + " ( " + rods[rodSelect].triangulation3 + " - " + rods[rodSelect].triangulation4 + " ) Position: " + cornerVert[j]);
-                        break;
-                }
-
-            }
-        }*/
-
-
-        //rods 360 & 480 experience the bug.
-        /*if (rods.Length > 361) {
-            Gizmos.color = Color.green;
-            Gizmos.DrawCube(rods[359].cornerVertex0, Vector3.one * 1.0f / resolution * gizmoSize * 1.2f);
-            Gizmos.color = Color.cyan;
-            Gizmos.DrawCube(rods[359].cornerVertex1, Vector3.one * 1.0f / resolution * gizmoSize * 1.2f);
-            Gizmos.color = Color.magenta;
-            Gizmos.DrawCube(rods[359].cornerVertex2, Vector3.one * 1.0f / resolution * gizmoSize * 1.2f);
-
-            Gizmos.color = Color.green;
-            Gizmos.DrawCube(rods[361].cornerVertex0, Vector3.one * 1.0f / resolution * gizmoSize * 1.2f);
-            Gizmos.color = Color.cyan;
-            Gizmos.DrawCube(rods[361].cornerVertex1, Vector3.one * 1.0f / resolution * gizmoSize * 1.2f);
-            Gizmos.color = Color.magenta;
-            Gizmos.DrawCube(rods[361].cornerVertex2, Vector3.one * 1.0f / resolution * gizmoSize * 1.2f);
-
-            Gizmos.color = Color.white;
-            Gizmos.DrawCube(rods[360].cornerVertex0, Vector3.one * 1.0f / resolution * gizmoSize * 1.2f);
-            Gizmos.color = Color.gray;
-            Gizmos.DrawCube(rods[360].cornerVertex1, Vector3.one * 1.0f / resolution * gizmoSize * 1.2f);
-            Gizmos.color = Color.black;
-            Gizmos.DrawCube(rods[360].cornerVertex2, Vector3.one * 1.0f / resolution * gizmoSize * 1.2f);
-        }*/
-
-        if (rodsDisplay) {
-            for (int i = 0; i < rods.Length; i++) {
-                Gizmos.color = Color.cyan;
-                Vector3[] cv = new Vector3[] { rods[i].cornerVertex0, rods[i].cornerVertex1, rods[i].cornerVertex2 };
-                Vector3 center = (cv[0] + cv[1] + cv[2]) / 3.0f;
-                Gizmos.DrawCube(center, Vector3.one * 1.0f / resolution * gizmoSize * 1.1f);
-                //Handles.Label((cv[0] + cv[1] + cv[2]) / 3.0f * 1.1f, $"R{i}");
-            }
-        }
+        if (triangleMeshBuffer != null) triangleMeshBuffer.Release();
+        if (vertexMeshBuffer != null) vertexMeshBuffer.Release();
     }
 
 
