@@ -39,7 +39,7 @@ float displacementFactor;
 float rodLength;
 float gravitationalRange;
 
-RWStructuredBuffer<SectorData> sectors; // e.g., 20 sectors
+RWStructuredBuffer<SectorData> sectors; // 20 sectors
 RWStructuredBuffer<RodData> rods; // rodCountTotal entries
 RWStructuredBuffer<int> triangulation; // Triangulation for 1 sector
 RWStructuredBuffer<float3> vertices; // All vertices for all sectors
@@ -225,7 +225,7 @@ void PopScatterSector(uint3 threadID : SV_DispatchThreadID)
     // Calculate the surface area of the triangle
     float3 edge1 = rods[globalIndex].cornerVertex1 - rods[globalIndex].cornerVertex0;
     float3 edge2 = rods[globalIndex].cornerVertex2 - rods[globalIndex].cornerVertex0;
-    float surfaceArea = 0.5f * length(cross(edge1, edge2));
+    rods[globalIndex].surfaceArea = 0.5f * length(cross(edge1, edge2));
     
     float3 perpendicular = normalize(cross(edge1, edge2));
     normals[globalIndex * 6] = perpendicular;
@@ -242,7 +242,7 @@ void PopScatterSector(uint3 threadID : SV_DispatchThreadID)
     rods[globalIndex].perpendicularity = perpendicular;
     
     
-    PullRod(globalIndex, rodLength);
+    PullRod(globalIndex, 0);
     /*uint vertexIndex = globalIndex * 6;
     vertices[vertexIndex] = rods[globalIndex].cornerVertex0;
     vertices[vertexIndex + 1] = rods[globalIndex].cornerVertex1;
@@ -258,6 +258,7 @@ void MoonAffect(uint3 threadID : SV_DispatchThreadID) {
     
     uint sectorIndex = globalIndex / rodCountPerSector;
     uint localRodIndex = globalIndex % rodCountPerSector;
+    float rodFactor = 0; // 0.1f
     for (int i = 0; i < moonCount; i++)
     {
         float dist = distance(rods[globalIndex].center + rods[globalIndex].perpendicularity * rodLength, moons[i].position);
@@ -265,18 +266,8 @@ void MoonAffect(uint3 threadID : SV_DispatchThreadID) {
         {
             float factor = dist / (moons[i].size * gravitationalRange);
             factor = 1 - factor;
-            if (factor > 1)
-            {
-                PullRod(globalIndex, 0);
-            }
-            else
-            {
-                PullRod(globalIndex, rodLength + factor);
-            }
-        }
-        else
-        {
-            //PullRod(globalIndex, rodLength);
+            rodFactor += pow(factor * 4, 2);
         }
     }
+    PullRod(globalIndex, rodLength * rodFactor);
 }

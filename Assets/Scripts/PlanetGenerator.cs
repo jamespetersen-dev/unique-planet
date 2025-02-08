@@ -13,8 +13,10 @@ public class PlanetGenerator : MonoBehaviour
                                                     //  Resolution max is 128 because ((128 - 1)^2) * 4 = 64516, highest possible resolution without going over max number of vertices
     [SerializeField, Range(0, 1)] float displacementFactor; //Displaces each vertex by 1 / resolution * displacementFactor / 2 in a random vector3 direction
     [SerializeField, Range(0, 1)] float rodLength;
-    [SerializeField, Range(0, 8)] float gravitationalRange = 4;
+    [SerializeField, Range(0, 32)] float gravitationalRange = 4;
     [SerializeField] Material material;
+
+    [SerializeField, Range(-30.0f, 30)] float rotationRate;
 
     public ComputeShader computeShader;
     public ComputeBuffer sectorBuffer;
@@ -26,6 +28,7 @@ public class PlanetGenerator : MonoBehaviour
 
     GameObject[] sectorObjs;
     GameObject[] moonObjs;
+    Moon[] moonMoon;
 
     int[] triangles;
     Vector3[] vertices;
@@ -65,26 +68,28 @@ public class PlanetGenerator : MonoBehaviour
         InitializeMoons();
         ComputePlanet();
         Render();
+        PullRods();
+        float totalSurfaceArea = 0;
+        for (int i = 0; i < rods.Length; i++) {
+            totalSurfaceArea += rods[i].surfaceArea;
+        }
+        Debug.Log("Rods: " + rods.Length + " - Surface Area: " + totalSurfaceArea);
     }
 
-    private void Update() {
-        if (CheckMoonDataChanged()) {
-            PullRods();
-        }
+    private void FixedUpdate() {
+        Rotate();
+        GetMoonData();
+        PullRods();
     }
-    private bool CheckMoonDataChanged() {
-        bool changed = false;
-        for (int i = 0; i < moonObjs.Length; i++) {
-            if (moonObjs[i].transform.position != moons[i].position) {
-                changed = true;
-                moons[i].position = moonObjs[i].transform.position;
-            }
-            if (moonObjs[i].transform.localScale.x != moons[i].size) {
-                changed = true;
-                moons[i].size = moonObjs[i].transform.localScale.x;
-            }
+    void Rotate() {
+        transform.Rotate(Vector3.up, rotationRate * Time.deltaTime);
+    }
+    public void GetMoonData() {
+        for (int i = 0; i < moons.Length; i++) {
+            moons[i].position = moonMoon[i].GetPositionRelativeToPlanet(transform);
+            moons[i].size = moonMoon[i].GetSize();
         }
-        return changed;
+        //Debug.Log(transform.localRotation.y);
     }
     private SectorData[] InitializeSectors() {
         float phi = (1 + Mathf.Sqrt(5)) / 2;
@@ -131,10 +136,12 @@ public class PlanetGenerator : MonoBehaviour
         return sector;
     }
     private void InitializeMoons() {
-        moonObjs = GameObject.FindGameObjectsWithTag("Moon");
-        MoonData[] moonDatas = new MoonData[moonObjs.Length];
+        moonMoon = FindObjectsOfType<Moon>();
+        MoonData[] moonDatas = new MoonData[moonMoon.Length];
+        moonObjs = new GameObject[moonMoon.Length];
         for (int i = 0; i < moonDatas.Length; i++) {
             moonDatas[i] = new MoonData();
+            moonObjs[i] = moonMoon[i].gameObject;
             moonDatas[i].position = moonObjs[i].transform.position;
             moonDatas[i].size = moonObjs[i].transform.localScale.x;
         }
@@ -199,7 +206,7 @@ public class PlanetGenerator : MonoBehaviour
     private void Render() {
 
         sectorObjs = new GameObject[sectors.Length];
-        int sectorLength = vertices.Length / sectors.Length; // Divide vertices equally among sectors
+        int sectorLength = vertices.Length / sectors.Length; 
 
         for (int i = 0; i < sectors.Length; i++) {
             sectorObjs[i] = new GameObject("Sector: " + i);
@@ -208,22 +215,19 @@ public class PlanetGenerator : MonoBehaviour
 
             Mesh mesh = new Mesh();
 
-            // Assuming triangles is correctly defined elsewhere for the sector
-            Vector3[] sectorVertices = new Vector3[sectorLength]; // This should match the expected number of vertices per sector
-            Array.Copy(vertices, i * sectorLength, sectorVertices, 0, sectorLength); // Copy the correct chunk of vertices for this sector
+            Vector3[] sectorVertices = new Vector3[sectorLength];
+            Array.Copy(vertices, i * sectorLength, sectorVertices, 0, sectorLength); 
 
             mesh.vertices = sectorVertices;
 
-            // Ensure triangles and vertex count match
             mesh.triangles = triangles;
 
-            Vector3[] sectorNormals = new Vector3[sectorLength]; // This should match the expected number of vertices per sector
-            Array.Copy(vertices, i * sectorLength, sectorNormals, 0, sectorLength); // Copy the correct chunk of vertices for this sector
+            Vector3[] sectorNormals = new Vector3[sectorLength];
+            Array.Copy(vertices, i * sectorLength, sectorNormals, 0, sectorLength);
             mesh.normals = sectorNormals;
 
             mesh.RecalculateTangents();
 
-            // Add components to the sector object
             sectorObjs[i].AddComponent<MeshRenderer>().material = material;
             sectorObjs[i].AddComponent<MeshFilter>().mesh = mesh;
         }
@@ -250,7 +254,6 @@ public class PlanetGenerator : MonoBehaviour
 
             int sectorLength = vertices.Length / sectors.Length;
 
-            // Assign updated vertex data to each sector
             for (int i = 0; i < sectors.Length; i++) {
                 Mesh mesh = sectorObjs[i].GetComponent<MeshFilter>().mesh;
 
