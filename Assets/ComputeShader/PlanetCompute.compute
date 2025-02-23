@@ -29,6 +29,8 @@ struct MoonData
 {
     float3 position;
     float size;
+    float gravitationalRange;
+    float gravitationalStrength;
 };
 
 int resolution; // Number of vertices along each edge (>=2)
@@ -37,7 +39,12 @@ int rodCountTotal; // Total rods = rodCountPerSector * (number of sectors)
 int moonCount;
 float displacementFactor;
 float rodLength;
-float gravitationalRange;
+float outerRange;
+float innerRange;
+float borderHeight;
+float anchorHeight;
+float planetRadius;
+uint pylonsRate;
 
 RWStructuredBuffer<SectorData> sectors; // 20 sectors
 RWStructuredBuffer<RodData> rods; // rodCountTotal entries
@@ -182,20 +189,114 @@ float3 ScatterVector(float3 A, float displacement)
             hash(uint((A.y + 56.7f) * 10000)),
             hash(uint((A.z + 89.0f) * 10000))
         );
-    vector0 = normalize(vector0) * displacement;
-    return normalize(A + vector0);
+    vector0 = normalize(vector0) * displacement * planetRadius;
+    return normalize(A + vector0) * planetRadius;
 }
 
-void PullRod(uint globalIndex, float distance)
+uint GetRandomDifferentGlobalIndex(uint globalIndex, uint totalCount)
 {
-    rods[globalIndex].displacement = distance;
+    uint randomIndex = globalIndex;
+    
+    randomIndex = hash(randomIndex) * totalCount;
+    
+    if (randomIndex == globalIndex)
+    {
+        randomIndex = (randomIndex + 1) % totalCount;
+    }
+    
+    return randomIndex;
+}
+
+void PullRod(uint globalIndex, float displacement, bool moonsSet)
+{
+    rods[globalIndex].displacement = displacement;
     uint vertexIndex = globalIndex * 6;
-    vertices[vertexIndex] = rods[globalIndex].cornerVertex0 + rods[globalIndex].perpendicularity * distance;
-    vertices[vertexIndex + 1] = rods[globalIndex].cornerVertex1 + rods[globalIndex].perpendicularity * distance;
-    vertices[vertexIndex + 2] = rods[globalIndex].cornerVertex2 + rods[globalIndex].perpendicularity * distance;
-    vertices[vertexIndex + 3] = rods[globalIndex].borderVertex0 + rods[globalIndex].perpendicularity * distance;
-    vertices[vertexIndex + 4] = rods[globalIndex].borderVertex1 + rods[globalIndex].perpendicularity * distance;
-    vertices[vertexIndex + 5] = rods[globalIndex].borderVertex2 + rods[globalIndex].perpendicularity * distance;
+    float3 northPole = float3(0, 1, 0);
+    float3 southPole = float3(0, -1, 0);
+    float3 center = float3(0, 0, 0);
+    if (distance(northPole, rods[globalIndex].center) < innerRange || distance(southPole, rods[globalIndex].center) < innerRange)
+    {
+        uint newGlobalIndex = GetRandomDifferentGlobalIndex(globalIndex, rodCountTotal);
+        if (newGlobalIndex % pow(2, pylonsRate) != 0 || distance(northPole, rods[newGlobalIndex].center) < innerRange || distance(southPole, rods[newGlobalIndex].center) < innerRange)
+        {
+            vertices[vertexIndex] = center;
+            vertices[vertexIndex + 1] = center;
+            vertices[vertexIndex + 2] = center;
+            vertices[vertexIndex + 3] = center;
+            vertices[vertexIndex + 4] = center;
+            vertices[vertexIndex + 5] = center;
+        }
+        else if (distance(northPole, rods[newGlobalIndex].center) < innerRange + outerRange || distance(southPole, rods[newGlobalIndex].center) < innerRange + outerRange)
+        {
+            vertices[vertexIndex] = center;
+            vertices[vertexIndex + 1] = center;
+            vertices[vertexIndex + 2] = center;
+            vertices[vertexIndex + 3] = center;
+            vertices[vertexIndex + 4] = center;
+            vertices[vertexIndex + 5] = center;
+        }
+        else
+        {
+            if (moonsSet)
+            {
+                float newRodFactor = 0;
+                for (int i = 0; i < moonCount; i++)
+                {
+                    float dist = distance(rods[newGlobalIndex].center + rods[newGlobalIndex].perpendicularity * rodLength, moons[i].position);
+                    if (dist <= moons[i].size * moons[i].gravitationalRange)
+                    {
+                        float factor = dist / (moons[i].size * moons[i].gravitationalRange * moons[i].gravitationalStrength);
+                        factor = 1 - factor;
+                        newRodFactor += pow(factor * 4, 2);
+                    }
+                }
+                float newDisplacement = rodLength * newRodFactor;
+                float randomFactor = (newGlobalIndex % 60) * 0.01f;
+                randomFactor += 0.2f;
+                float3 newCornerVertex0 = lerp(rods[newGlobalIndex].cornerVertex0, rods[newGlobalIndex].cornerVertex1, randomFactor);
+                float3 newCornerVertex1 = lerp(rods[newGlobalIndex].cornerVertex1, rods[newGlobalIndex].cornerVertex2, randomFactor);
+                float3 newCornerVertex2 = lerp(rods[newGlobalIndex].cornerVertex2, rods[newGlobalIndex].cornerVertex0, randomFactor);
+                float3 newBorderVertex0 = lerp(rods[newGlobalIndex].borderVertex0, rods[newGlobalIndex].borderVertex1, randomFactor);
+                float3 newBorderVertex1 = lerp(rods[newGlobalIndex].borderVertex1, rods[newGlobalIndex].borderVertex2, randomFactor);
+                float3 newBorderVertex2 = lerp(rods[newGlobalIndex].borderVertex2, rods[newGlobalIndex].borderVertex0, randomFactor);
+                
+                
+                vertices[vertexIndex] = newCornerVertex0 + rods[newGlobalIndex].perpendicularity * newDisplacement + rods[newGlobalIndex].perpendicularity * rodLength * anchorHeight * randomFactor;
+                vertices[vertexIndex + 1] = newCornerVertex1 + rods[newGlobalIndex].perpendicularity * newDisplacement + rods[newGlobalIndex].perpendicularity * rodLength * anchorHeight * (1 - randomFactor);
+                vertices[vertexIndex + 2] = newCornerVertex2 + rods[newGlobalIndex].perpendicularity * newDisplacement + rods[newGlobalIndex].perpendicularity * rodLength * anchorHeight;
+                vertices[vertexIndex + 3] = newBorderVertex0 + rods[newGlobalIndex].perpendicularity * newDisplacement + rods[newGlobalIndex].perpendicularity * rodLength * anchorHeight * randomFactor;
+                vertices[vertexIndex + 4] = newBorderVertex1 + rods[newGlobalIndex].perpendicularity * newDisplacement + rods[newGlobalIndex].perpendicularity * rodLength * anchorHeight * (1 - randomFactor);
+                vertices[vertexIndex + 5] = newBorderVertex2 + rods[newGlobalIndex].perpendicularity * newDisplacement + rods[newGlobalIndex].perpendicularity * rodLength * anchorHeight;
+            }
+            else
+            {
+                vertices[vertexIndex] = rods[newGlobalIndex].cornerVertex0 + rods[newGlobalIndex].perpendicularity * rodLength;
+                vertices[vertexIndex + 1] = rods[newGlobalIndex].cornerVertex1 + rods[newGlobalIndex].perpendicularity * rodLength;
+                vertices[vertexIndex + 2] = rods[newGlobalIndex].cornerVertex2 + rods[newGlobalIndex].perpendicularity * rodLength;
+                vertices[vertexIndex + 3] = rods[newGlobalIndex].borderVertex0 + rods[newGlobalIndex].perpendicularity * rodLength;
+                vertices[vertexIndex + 4] = rods[newGlobalIndex].borderVertex1 + rods[newGlobalIndex].perpendicularity * rodLength;
+                vertices[vertexIndex + 5] = rods[newGlobalIndex].borderVertex2 + rods[newGlobalIndex].perpendicularity * rodLength;
+            }
+        }
+    }
+    else if (distance(northPole, rods[globalIndex].center) < innerRange + outerRange || distance(southPole, rods[globalIndex].center) < innerRange + outerRange)
+    {
+        vertices[vertexIndex] = rods[globalIndex].cornerVertex0 * (1 + borderHeight);
+        vertices[vertexIndex + 1] = rods[globalIndex].cornerVertex1 * (1 + borderHeight);
+        vertices[vertexIndex + 2] = rods[globalIndex].cornerVertex2 * (1 + borderHeight);
+        vertices[vertexIndex + 3] = rods[globalIndex].borderVertex0 * (1 + borderHeight);
+        vertices[vertexIndex + 4] = rods[globalIndex].borderVertex1 * (1 + borderHeight);
+        vertices[vertexIndex + 5] = rods[globalIndex].borderVertex2 * (1 + borderHeight);
+    }
+    else
+    {
+        vertices[vertexIndex] = rods[globalIndex].cornerVertex0 + rods[globalIndex].perpendicularity * displacement;
+        vertices[vertexIndex + 1] = rods[globalIndex].cornerVertex1 + rods[globalIndex].perpendicularity * displacement;
+        vertices[vertexIndex + 2] = rods[globalIndex].cornerVertex2 + rods[globalIndex].perpendicularity * displacement;
+        vertices[vertexIndex + 3] = rods[globalIndex].borderVertex0 + rods[globalIndex].perpendicularity * displacement;
+        vertices[vertexIndex + 4] = rods[globalIndex].borderVertex1 + rods[globalIndex].perpendicularity * displacement;
+        vertices[vertexIndex + 5] = rods[globalIndex].borderVertex2 + rods[globalIndex].perpendicularity * displacement;
+    }
 }
 
 [numthreads(64, 1, 1)]
@@ -206,9 +307,9 @@ void PopScatterSector(uint3 threadID : SV_DispatchThreadID)
     uint sectorIndex = globalIndex / rodCountPerSector;
     uint localRodIndex = globalIndex % rodCountPerSector;
     
-    rods[globalIndex].cornerVertex0 = normalize(rods[globalIndex].cornerVertex0);
-    rods[globalIndex].cornerVertex1 = normalize(rods[globalIndex].cornerVertex1);
-    rods[globalIndex].cornerVertex2 = normalize(rods[globalIndex].cornerVertex2);
+    rods[globalIndex].cornerVertex0 = normalize(rods[globalIndex].cornerVertex0) * planetRadius;
+    rods[globalIndex].cornerVertex1 = normalize(rods[globalIndex].cornerVertex1) * planetRadius;
+    rods[globalIndex].cornerVertex2 = normalize(rods[globalIndex].cornerVertex2) * planetRadius;
     
     if (displacementFactor > 0)
     {
@@ -242,7 +343,7 @@ void PopScatterSector(uint3 threadID : SV_DispatchThreadID)
     rods[globalIndex].perpendicularity = perpendicular;
     
     
-    PullRod(globalIndex, 0);
+    PullRod(globalIndex, 0, false);
     /*uint vertexIndex = globalIndex * 6;
     vertices[vertexIndex] = rods[globalIndex].cornerVertex0;
     vertices[vertexIndex + 1] = rods[globalIndex].cornerVertex1;
@@ -262,12 +363,13 @@ void MoonAffect(uint3 threadID : SV_DispatchThreadID) {
     for (int i = 0; i < moonCount; i++)
     {
         float dist = distance(rods[globalIndex].center + rods[globalIndex].perpendicularity * rodLength, moons[i].position);
-        if (dist <= moons[i].size * gravitationalRange)
+        if (dist <= moons[i].size * moons[i].gravitationalRange)
         {
-            float factor = dist / (moons[i].size * gravitationalRange);
+            float factor = dist / (moons[i].size * moons[i].gravitationalRange);
             factor = 1 - factor;
+            factor *= moons[i].gravitationalStrength;
             rodFactor += pow(factor * 4, 2);
         }
     }
-    PullRod(globalIndex, rodLength * rodFactor);
+    PullRod(globalIndex, rodLength * rodFactor, true);
 }

@@ -9,16 +9,24 @@ using UnityEngine;
 
 public class PlanetGenerator : MonoBehaviour
 {
+    [Header ("Startup Parameters")]
     [SerializeField, Range(2, 103)] int resolution; //  Number of vertices along an edge
                                                     //  Resolution max is 128 because ((128 - 1)^2) * 4 = 64516, highest possible resolution without going over max number of vertices
     [SerializeField, Range(0, 1)] float displacementFactor; //Displaces each vertex by 1 / resolution * displacementFactor / 2 in a random vector3 direction
     [SerializeField, Range(0, 1)] float rodLength;
-    [SerializeField, Range(0, 32)] float gravitationalRange = 4;
+    [SerializeField, Range(0.5f, 50)] float radius = 1; //By default it is a 1 radius. So 
     [SerializeField] Material material;
-
-    [SerializeField, Range(-30.0f, 30)] float rotationRate;
-
     public ComputeShader computeShader;
+
+    [Header("Runtime Parameters")]
+    [SerializeField, Range(-30.0f, 30)] float rotationRate;
+    [SerializeField, Range(0, 1)] float outerRange; // Border Rods // Will be outerRange + innerRange
+    [SerializeField, Range(0, 1)] float innerRange; // Hole
+    [SerializeField, Range(-0.5f, 0.5f)] float borderHeight;
+    [SerializeField, Range(0, 1)] float anchorHeight;
+    [SerializeField, Range(0, 12)] int anchorRate;
+    [SerializeField] bool attachCamera;
+
     public ComputeBuffer sectorBuffer;
     public ComputeBuffer rodBuffer;
     public ComputeBuffer triangleMeshBuffer;
@@ -26,6 +34,9 @@ public class PlanetGenerator : MonoBehaviour
     public ComputeBuffer normalMeshBuffer;
     public ComputeBuffer moonBuffer;
 
+    GameObject planet;
+    GameObject orbit;
+    GameObject sectorContainer;
     GameObject[] sectorObjs;
     GameObject[] moonObjs;
     Moon[] moonMoon;
@@ -61,9 +72,13 @@ public class PlanetGenerator : MonoBehaviour
     struct MoonData {
         public Vector3 position;
         public float size;
+        public float gravitationalRange;
+        public float gravitationalStrength;
     }
 
     private void Awake() {
+        planet = new GameObject("Planet");
+        planet.transform.position = transform.position;
         this.sectors = InitializeSectors();
         InitializeMoons();
         ComputePlanet();
@@ -81,32 +96,47 @@ public class PlanetGenerator : MonoBehaviour
         GetMoonData();
         PullRods();
     }
+    private void Update() {
+        if (planet != null) {
+            if (attachCamera && Camera.main.gameObject.transform.parent != planet.transform) {
+                Camera.main.gameObject.transform.SetParent(planet.transform);
+            }
+            else if (!attachCamera && Camera.main.gameObject.transform.parent == planet.transform) {
+                Camera.main.gameObject.transform.SetParent(null);
+            }
+        }
+    }
     void Rotate() {
-        transform.Rotate(Vector3.up, rotationRate * Time.deltaTime);
+        planet.transform.Rotate(Vector3.up, rotationRate * Time.deltaTime);
+    }
+    public float GetPlanetRadius() {
+        return radius;
     }
     public void GetMoonData() {
         for (int i = 0; i < moons.Length; i++) {
-            moons[i].position = moonMoon[i].GetPositionRelativeToPlanet(transform);
+            moons[i].position = moonMoon[i].GetPositionRelativeToPlanet(planet.transform);
             moons[i].size = moonMoon[i].GetSize();
+            moons[i].gravitationalRange = moonMoon[i].GetGravityRange();
+            moons[i].gravitationalStrength = moonMoon[i].GetGravityStrength();
         }
         //Debug.Log(transform.localRotation.y);
     }
     private SectorData[] InitializeSectors() {
         float phi = (1 + Mathf.Sqrt(5)) / 2;
         Vector3[] icosahedronVertices = new Vector3[12] {
-        new Vector3(-1,  phi, 0),
-        new Vector3( 1,  phi, 0),
-        new Vector3(-1, -phi, 0),
-        new Vector3( 1, -phi, 0),
-        new Vector3(0, -1,  phi),
-        new Vector3(0,  1,  phi),
-        new Vector3(0, -1, -phi),
-        new Vector3(0,  1, -phi),
-        new Vector3( phi, 0, -1),
-        new Vector3( phi, 0,  1),
-        new Vector3(-phi, 0, -1),
-        new Vector3(-phi, 0,  1)
-    };
+        new Vector3(-1,  phi, 0) * radius,
+        new Vector3( 1,  phi, 0) * radius,
+        new Vector3(-1, -phi, 0) * radius,
+        new Vector3( 1, -phi, 0) * radius,
+        new Vector3(0, -1,  phi) * radius,
+        new Vector3(0,  1,  phi) * radius,
+        new Vector3(0, -1, -phi) * radius,
+        new Vector3(0,  1, -phi) * radius,
+        new Vector3( phi, 0, -1) * radius,
+        new Vector3( phi, 0,  1) * radius,
+        new Vector3(-phi, 0, -1) * radius,
+        new Vector3(-phi, 0,  1) * radius}
+        ;
 
         SectorData[] sector = new SectorData[20];
 
@@ -139,16 +169,23 @@ public class PlanetGenerator : MonoBehaviour
         moonMoon = FindObjectsOfType<Moon>();
         MoonData[] moonDatas = new MoonData[moonMoon.Length];
         moonObjs = new GameObject[moonMoon.Length];
+        orbit = new GameObject("Orbit");
+        orbit.transform.position = planet.transform.position;
+        orbit.transform.parent = planet.transform;
         for (int i = 0; i < moonDatas.Length; i++) {
             moonDatas[i] = new MoonData();
             moonObjs[i] = moonMoon[i].gameObject;
+            moonObjs[i].transform.parent = orbit.transform;
+            moonMoon[i].SetPlanetRadius(radius);
+            moonMoon[i].SetOrbit(orbit);
             moonDatas[i].position = moonObjs[i].transform.position;
-            moonDatas[i].size = moonObjs[i].transform.localScale.x;
+            moonDatas[i].size = moonMoon[i].GetSize();
+            moonDatas[i].gravitationalRange = moonMoon[i].GetGravityRange();
+            moonDatas[i].gravitationalStrength = moonMoon[i].GetGravityStrength();
         }
         moons = moonDatas;
         computeShader.SetInt("moonCount", moons.Length);
-        //Debug.Log(moons[0].size + " " + moons[0].position);
-        moonBuffer = new ComputeBuffer(moons.Length, sizeof(float) * 4);
+        moonBuffer = new ComputeBuffer(moons.Length, sizeof(float) * 6);
     }
 
     private void ComputePlanet() {
@@ -172,7 +209,13 @@ public class PlanetGenerator : MonoBehaviour
         computeShader.SetInt("rodCountTotal", rodCountTotal);
         computeShader.SetInt("resolution", resolution);
         computeShader.SetFloat("displacementFactor", displacementFactor);
-        computeShader.SetFloat("rodLength", rodLength);
+        computeShader.SetFloat("rodLength", rodLength * radius);
+        computeShader.SetFloat("outerRange", outerRange);
+        computeShader.SetFloat("innerRange", innerRange);
+        computeShader.SetFloat("borderHeight", borderHeight);
+        computeShader.SetFloat("anchorHeight", anchorHeight);
+        computeShader.SetInt("pylonsRate", anchorRate);
+        computeShader.SetFloat("planetRadius", radius);
 
         int threadGroupSize = Mathf.CeilToInt(rodCountTotal / 64.0f);
         computeShader.Dispatch(kernelHandle0, threadGroupSize, 1, 1);
@@ -206,12 +249,15 @@ public class PlanetGenerator : MonoBehaviour
     private void Render() {
 
         sectorObjs = new GameObject[sectors.Length];
-        int sectorLength = vertices.Length / sectors.Length; 
+        int sectorLength = vertices.Length / sectors.Length;
+        sectorContainer = new GameObject("Sectors");
+        sectorContainer.transform.position = planet.transform.position;
+        sectorContainer.transform.parent = planet.transform;
 
         for (int i = 0; i < sectors.Length; i++) {
             sectorObjs[i] = new GameObject("Sector: " + i);
-            sectorObjs[i].transform.parent = transform;
-            sectorObjs[i].transform.position = transform.position;
+            sectorObjs[i].transform.parent = sectorContainer.transform;
+            sectorObjs[i].transform.position = planet.transform.position;
 
             Mesh mesh = new Mesh();
 
@@ -239,7 +285,11 @@ public class PlanetGenerator : MonoBehaviour
             int kernelHandle = computeShader.FindKernel("MoonAffect");
 
             moonBuffer.SetData(moons);
-            computeShader.SetFloat("gravitationalRange", gravitationalRange);
+            computeShader.SetFloat("outerRange", outerRange);
+            computeShader.SetFloat("innerRange", innerRange);
+            computeShader.SetFloat("borderHeight", borderHeight);
+            computeShader.SetFloat("anchorHeight", anchorHeight);
+            computeShader.SetInt("pylonsRate", anchorRate);
 
             computeShader.SetBuffer(kernelHandle, "rods", rodBuffer);
             computeShader.SetBuffer(kernelHandle, "vertices", vertexMeshBuffer);
@@ -284,5 +334,8 @@ public class PlanetGenerator : MonoBehaviour
         if (moonBuffer != null) moonBuffer.Release();
     }
 
-
+    void OnDrawGizmosSelected() {
+        Gizmos.color = Color.red;
+        Gizmos.DrawWireSphere(transform.position, radius);
+    }
 }
