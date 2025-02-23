@@ -1,8 +1,8 @@
-Shader "Custom/FaceNormal"
+Shader "Custom/FaceNormalVisualization"
 {
     Properties
     {
-        _Color ("Color", Color) = (1, 1, 1, 1)
+        _Color ("Base Color", Color) = (1, 1, 1, 1)
     }
     SubShader
     {
@@ -16,8 +16,6 @@ Shader "Custom/FaceNormal"
             float3 worldPos; // World position of the fragment
         };
 
-        fixed4 _Color;
-
         void surf (Input IN, inout SurfaceOutputStandard o)
         {
             // Compute the face normal using finite differences
@@ -25,11 +23,11 @@ Shader "Custom/FaceNormal"
             float3 dy = ddy(IN.worldPos);
             float3 faceNormal = normalize(cross(dx, dy));
 
-            // Apply normal to the shader output
+            // Ensure the normal remains in world space
             o.Normal = faceNormal;
 
-            // Base color
-            o.Albedo = _Color.rgb;
+            // Convert to 0-1 range for visualization (since normals are usually -1 to 1)
+            o.Albedo = faceNormal * 0.5 + 0.5;
         }
         ENDCG
     }

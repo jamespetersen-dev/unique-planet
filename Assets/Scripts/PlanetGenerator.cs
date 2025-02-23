@@ -100,6 +100,9 @@ public class PlanetGenerator : MonoBehaviour
         if (planet != null) {
             if (attachCamera && Camera.main.gameObject.transform.parent != planet.transform) {
                 Camera.main.gameObject.transform.SetParent(planet.transform);
+                Camera.main.gameObject.transform.localPosition = new Vector3(0, 0, -radius * 2);
+                Camera.main.gameObject.transform.localRotation = Quaternion.Euler(0, 0, 0);
+                Camera.main.gameObject.transform.localScale = Vector3.one;
             }
             else if (!attachCamera && Camera.main.gameObject.transform.parent == planet.transform) {
                 Camera.main.gameObject.transform.SetParent(null);
@@ -337,5 +340,15 @@ public class PlanetGenerator : MonoBehaviour
     void OnDrawGizmosSelected() {
         Gizmos.color = Color.red;
         Gizmos.DrawWireSphere(transform.position, radius);
+
+        Gizmos.color = new Color(1.0f, 0.5f, 0.0f);
+        if (rods != null) {
+            for (int i = 0; i < rods.Length; i++) {
+                if (i > 100) {
+                    break;
+                }
+                Gizmos.DrawRay(rods[i].center, rods[i].perpendicularity);
+            }
+        }
     }
 }

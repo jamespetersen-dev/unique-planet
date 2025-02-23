@@ -211,12 +211,19 @@ void PullRod(uint globalIndex, float displacement, bool moonsSet)
 {
     rods[globalIndex].displacement = displacement;
     uint vertexIndex = globalIndex * 6;
-    float3 northPole = float3(0, 1, 0);
-    float3 southPole = float3(0, -1, 0);
+    float3 northPole = float3(0, planetRadius, 0);
+    float3 southPole = float3(0, -planetRadius, 0);
     float3 center = float3(0, 0, 0);
-    if (distance(northPole, rods[globalIndex].center) < innerRange || distance(southPole, rods[globalIndex].center) < innerRange)
+    if (distance(northPole, rods[globalIndex].center) < innerRange * planetRadius || distance(southPole, rods[globalIndex].center) < innerRange * planetRadius)
     {
-        uint newGlobalIndex = GetRandomDifferentGlobalIndex(globalIndex, rodCountTotal);
+        vertices[vertexIndex] = center;
+        vertices[vertexIndex + 1] = center;
+        vertices[vertexIndex + 2] = center;
+        vertices[vertexIndex + 3] = center;
+        vertices[vertexIndex + 4] = center;
+        vertices[vertexIndex + 5] = center;
+        //Temporarily removing pylon functionality
+        /*uint newGlobalIndex = GetRandomDifferentGlobalIndex(globalIndex, rodCountTotal);
         if (newGlobalIndex % pow(2, pylonsRate) != 0 || distance(northPole, rods[newGlobalIndex].center) < innerRange || distance(southPole, rods[newGlobalIndex].center) < innerRange)
         {
             vertices[vertexIndex] = center;
@@ -277,9 +284,9 @@ void PullRod(uint globalIndex, float displacement, bool moonsSet)
                 vertices[vertexIndex + 4] = rods[newGlobalIndex].borderVertex1 + rods[newGlobalIndex].perpendicularity * rodLength;
                 vertices[vertexIndex + 5] = rods[newGlobalIndex].borderVertex2 + rods[newGlobalIndex].perpendicularity * rodLength;
             }
-        }
+        }*/
     }
-    else if (distance(northPole, rods[globalIndex].center) < innerRange + outerRange || distance(southPole, rods[globalIndex].center) < innerRange + outerRange)
+    else if (distance(northPole, rods[globalIndex].center) < (innerRange + outerRange) * planetRadius || distance(southPole, rods[globalIndex].center) < (innerRange + outerRange) * planetRadius)
     {
         vertices[vertexIndex] = rods[globalIndex].cornerVertex0 * (1 + borderHeight);
         vertices[vertexIndex + 1] = rods[globalIndex].cornerVertex1 * (1 + borderHeight);
@@ -332,9 +339,9 @@ void PopScatterSector(uint3 threadID : SV_DispatchThreadID)
     normals[globalIndex * 6] = perpendicular;
     normals[globalIndex * 6 + 1] = perpendicular;
     normals[globalIndex * 6 + 2] = perpendicular;
-    normals[globalIndex * 6 + 3] = perpendicular;
-    normals[globalIndex * 6 + 4] = perpendicular;
-    normals[globalIndex * 6 + 5] = perpendicular;
+    normals[globalIndex * 6 + 3] = -perpendicular;
+    normals[globalIndex * 6 + 4] = -perpendicular;
+    normals[globalIndex * 6 + 5] = -perpendicular;
     
     rods[globalIndex].borderVertex0 = rods[globalIndex].cornerVertex0 - perpendicular * rodLength;
     rods[globalIndex].borderVertex1 = rods[globalIndex].cornerVertex1 - perpendicular * rodLength;
